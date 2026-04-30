@@ -1,64 +1,85 @@
 # AlphaSignal
 
-A local financial news sentiment analysis and market intelligence agent. Fine-tunes FinBERT on Financial PhraseBank, tracks experiments with MLflow, and exposes a LangGraph agent that reasons over live market data using Ollama's llama3.2.
+> Financial news sentiment analysis and market intelligence agent — fine-tuned FinBERT + LangGraph reasoning over live market data.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Sentiment model | FinBERT fine-tuned on Twitter Financial News Sentiment (HuggingFace Trainer) |
+| Experiment tracking | MLflow — per-run metrics, confusion matrix, checkpoint artifacts |
+| Agent orchestration | LangGraph ReAct agent with 3 tools |
+| LLM reasoning | Ollama llama3.2 — fully local, no API key |
+| Document pipeline | LlamaIndex — chunking, indexing, retrieval |
+| Vector store | ChromaDB — persistent semantic search |
+| Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
+| Cache | Redis via Upstash — 1-hour TTL per ticker |
+| Market data | yfinance — free, no API key |
+| Backend | FastAPI + Uvicorn |
+| Frontend | React + Vite + Tailwind CSS v4 |
+| CI/CD | GitHub Actions — pytest + flake8 on every push |
 
 ---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  React + Vite + Tailwind v4 (port 5173)                        │
-│  ┌─────────────────┐  ┌────────────────────────────────────┐   │
-│  │ Sentiment Card  │  │       Agent Query Card             │   │
-│  └────────┬────────┘  └──────────────┬─────────────────────┘   │
-└───────────┼──────────────────────────┼─────────────────────────┘
-            │ POST /sentiment           │ POST /agent/query
-┌───────────▼──────────────────────────▼─────────────────────────┐
-│  FastAPI backend (port 8000)                                    │
-│  ┌──────────────┐  ┌─────────────────────────────────────────┐ │
-│  │ sentiment.py │  │ agent.py (LangGraph ReAct)              │ │
-│  │ FinBERT      │  │  ├─ get_sentiment  → sentiment.py       │ │
-│  │ checkpoint   │  │  ├─ search_news    → rag.py (ChromaDB)  │ │
-│  └──────┬───────┘  │  └─ summarize_signals → news.py        │ │
-│         │          │            ↓                            │ │
-│  ┌──────▼───────┐  │  Ollama llama3.2 (local, port 11434)   │ │
-│  │  cache.py    │  └─────────────────────────────────────────┘ │
-│  │  Redis TTL   │                                               │
-│  └──────────────┘  ┌──────────┐  ┌──────────────────────────┐ │
-│                    │ news.py  │  │ rag.py                   │ │
-│                    │ yfinance │  │ LlamaIndex + ChromaDB    │ │
-│                    └──────────┘  │ all-MiniLM-L6-v2 embeds  │ │
-│                                  └──────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+Two-stage pipeline: a fine-tuned classifier handles sentence-level sentiment, and a LangGraph agent handles multi-step market reasoning over live news.
 
-┌─────────────────────────────────────────────────────────────────┐
-│  finetune/                                                      │
-│  ├─ train.py    → HuggingFace Trainer + MLflow logging         │
-│  └─ evaluate.py → confusion matrix + classification report     │
-│  Dataset: Financial PhraseBank (sentences_allagree)            │
-│  Base model: ProsusAI/finbert → saved to finetune/checkpoints/ │
-└─────────────────────────────────────────────────────────────────┘
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 1 — Sentiment Classification                         │
+│                                                             │
+│  Twitter Financial News dataset                             │
+│       → HuggingFace Trainer (3 epochs)                     │
+│       → Fine-tuned FinBERT checkpoint                       │
+│       → Labels: bearish / neutral / bullish                 │
+│       → MLflow: accuracy, F1, confusion matrix logged       │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 2 — LangGraph ReAct Agent                            │
+│                                                             │
+│  User question (natural language)                           │
+│       → Ollama llama3.2 reasons over 3 tools:               │
+│         ├─ get_sentiment(ticker, date_range)                 │
+│         │    yfinance headlines → FinBERT inference         │
+│         │    → Redis cache (TTL 1h)                         │
+│         ├─ search_news(ticker, topic)                        │
+│         │    LlamaIndex → ChromaDB semantic search          │
+│         │    all-MiniLM-L6-v2 embeddings                    │
+│         └─ summarize_signals(ticker)                         │
+│              bullish/bearish % trend + directional signal   │
+│       → FastAPI /agent/query → React frontend               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Stack
+## MLflow Experiments
 
-| Layer | Technology |
+Two training runs compared with different learning rates:
+
+![MLflow Runs](docs/mlflow_screenshot.png)
+
+| Run | Learning Rate | Accuracy | F1 Macro | F1 Weighted |
+|---|---|---|---|---|
+| Run 1 (mysterious-shad-541) | 2e-05 | 87.7% | 83.6% | 87.7% |
+| Run 2 (vaunted-cat-691) | **5e-05** | **88.3%** | **84.5%** | **88.3%** |
+
+Best checkpoint saved automatically via `load_best_model_at_end=True` and logged as an MLflow artifact. Confusion matrix and classification report also logged per run.
+
+---
+
+## Key Results
+
+| Metric | Value |
 |---|---|
-| Sentiment model | Fine-tuned FinBERT (ProsusAI/finbert) |
-| Experiment tracking | MLflow |
-| Agent orchestration | LangGraph (ReAct) |
-| LLM reasoning | Ollama llama3.2 (local) |
-| Document pipeline / RAG | LlamaIndex |
-| Vector store | ChromaDB |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
-| Cache | Redis (1-hour TTL per ticker) |
-| Market data | yfinance |
-| Backend | FastAPI + Uvicorn |
-| Frontend | React + Vite + Tailwind CSS v4 |
-| CI/CD | GitHub Actions (pytest + flake8) |
+| Best accuracy | 88.3% |
+| F1 Macro | 84.5% |
+| Redis cache hit | Sub-100ms response on repeated ticker queries |
+| Agent latency | ~3–6s (Ollama local inference, no network) |
 
 ---
 
@@ -69,7 +90,6 @@ A local financial news sentiment analysis and market intelligence agent. Fine-tu
 - Python 3.11+
 - Node.js 18+
 - [Ollama](https://ollama.com/) installed
-- Redis running on `localhost:6379`
 
 ### 1. Pull the LLM
 
@@ -77,82 +97,45 @@ A local financial news sentiment analysis and market intelligence agent. Fine-tu
 ollama pull llama3.2
 ```
 
-### 2. Start required services
+### 2. Clone and install
 
 ```bash
-# Terminal 1 — Redis
-redis-server
-
-# Terminal 2 — MLflow UI (optional, view at http://localhost:5000)
-mlflow ui
-```
-
-### 3. Install Python dependencies
-
-```bash
+git clone <your-repo-url>
 cd alphasignal
 pip install -r requirements.txt
 ```
 
-### 4. Fine-tune FinBERT (optional — skipped if checkpoint already exists)
+### 3. Configure environment
+
+Create a `.env` file in the project root:
 
 ```bash
-# Downloads Financial PhraseBank and trains for 3 epochs (~10 min on CPU)
+REDIS_URL=rediss://<your-upstash-endpoint>:6379
+```
+
+### 4. Fine-tune FinBERT
+
+```bash
+# Train — logs to MLflow, saves best checkpoint
 python -m finetune.train
 
-# Evaluate and log confusion matrix + classification report
+# Evaluate — logs confusion matrix + classification report
 python -m finetune.evaluate
 ```
 
-If you skip fine-tuning, the backend falls back to the base `ProsusAI/finbert` checkpoint automatically.
+If you skip fine-tuning, the backend falls back to base `ProsusAI/finbert` automatically.
 
-### 5. Start the backend
-
-```bash
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 6. Start the frontend
+### 5. Start all services
 
 ```bash
-cd frontend
-npm install
-npm run dev
-# Open http://localhost:5173
-```
+# Terminal 1 — MLflow UI (http://localhost:5000)
+mlflow ui --backend-store-uri sqlite:///mlflow.db
 
----
+# Terminal 2 — FastAPI backend
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
-## API Endpoints
-
-### `POST /sentiment`
-
-```json
-// Request
-{ "ticker": "NVDA" }
-
-// Response
-{
-  "ticker": "NVDA",
-  "overall_sentiment": "positive",
-  "confidence": 0.874,
-  "label_distribution": { "positive": 12, "negative": 3, "neutral": 5 },
-  "headlines_analyzed": 20,
-  "cached": false
-}
-```
-
-### `POST /agent/query`
-
-```json
-// Request
-{ "question": "Is NVDA bullish this week and why?" }
-
-// Response
-{
-  "question": "Is NVDA bullish this week and why?",
-  "answer": "Based on 20 recent headlines, NVDA shows a BULLISH signal ..."
-}
+# Terminal 3 — React frontend (http://localhost:5173)
+cd frontend && npm install && npm run dev
 ```
 
 ---
@@ -161,32 +144,27 @@ npm run dev
 
 ```
 "Is NVDA bullish this week and why?"
-"What is the current sentiment for TSLA?"
-"Compare AAPL and MSFT market signals."
 "What are analysts saying about AMD's AI chip strategy?"
-"Summarize the sentiment trend for AMZN over the past week."
+"Summarize the sentiment trend for TSLA over the past week."
 ```
 
 ---
 
-## Running Tests
+## API Reference
 
-```bash
-pytest tests/ -v
+**`POST /sentiment`** — returns cached or fresh FinBERT sentiment for a ticker
+
+```json
+{ "ticker": "NVDA" }
+→ { "overall_sentiment": "bullish", "confidence": 0.883, "label_distribution": {...}, "cached": false }
 ```
 
----
+**`POST /agent/query`** — runs the LangGraph agent on a natural language question
 
-## MLflow Experiments
-
-<!-- Screenshot placeholder -->
-> After running `finetune/train.py`, open `http://localhost:5000` to view:
-> - F1 macro / F1 weighted / accuracy per epoch
-> - Training loss curve
-> - Confusion matrix artifact
-> - Best checkpoint artifact
-
-![MLflow Screenshot Placeholder](docs/mlflow_screenshot.png)
+```json
+{ "question": "Is NVDA bullish this week and why?" }
+→ { "answer": "Based on 18 recent headlines, NVDA shows a BULLISH signal (72% positive)..." }
+```
 
 ---
 
@@ -195,33 +173,26 @@ pytest tests/ -v
 ```
 alphasignal/
 ├── finetune/
-│   ├── train.py           # FinBERT fine-tuning + MLflow logging
-│   └── evaluate.py        # Evaluation, confusion matrix, MLflow artifacts
+│   ├── train.py        # FinBERT fine-tuning + MLflow tracking
+│   └── evaluate.py     # Confusion matrix + classification report
 ├── backend/
-│   ├── main.py            # FastAPI app — /sentiment and /agent/query
-│   ├── agent.py           # LangGraph ReAct agent + 3 tools
-│   ├── sentiment.py       # FinBERT inference singleton
-│   ├── news.py            # yfinance headline fetcher
-│   ├── rag.py             # LlamaIndex + ChromaDB pipeline
-│   └── cache.py           # Redis get/set with 1-hour TTL
+│   ├── main.py         # FastAPI — /sentiment and /agent/query
+│   ├── agent.py        # LangGraph ReAct agent + 3 tools
+│   ├── sentiment.py    # FinBERT inference singleton
+│   ├── news.py         # yfinance headline fetcher
+│   ├── rag.py          # LlamaIndex + ChromaDB pipeline
+│   └── cache.py        # Upstash Redis — 1h TTL per ticker
 ├── frontend/
-│   └── src/App.jsx        # React UI (ticker input + agent query)
+│   └── src/App.jsx     # React UI
 ├── tests/
-│   └── test_api.py        # pytest tests for both endpoints
+│   └── test_api.py     # pytest — both endpoints mocked
 ├── .github/
-│   └── workflows/ci.yml   # GitHub Actions — pytest + flake8
-├── requirements.txt
-├── pytest.ini
-├── setup.cfg
-└── README.md
+│   └── workflows/ci.yml
+└── requirements.txt
 ```
 
 ---
 
-## Environment Variables
+## CI/CD
 
-| Variable | Default | Description |
-|---|---|---|
-| `FINBERT_CHECKPOINT` | `finetune/checkpoints/best` | Path to fine-tuned model |
-| `REDIS_HOST` | `localhost` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
+GitHub Actions runs on every push — installs dependencies, runs `pytest`, and lints with `flake8`. Badge reflects latest main branch status.
