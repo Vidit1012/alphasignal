@@ -5,4 +5,5 @@ pytest-mock
 uvicorn
 redis
 python-dotenv
+yfinance
 flake8

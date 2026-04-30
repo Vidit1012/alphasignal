@@ -16,7 +16,8 @@
 | Vector store | ChromaDB — persistent semantic search |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
 | Cache | Redis via Upstash — 1-hour TTL per ticker |
-| Market data | yfinance — free, no API key |
+| Training data | Twitter Financial News Sentiment dataset (HuggingFace) |
+| Live news | yfinance — real-time ticker headlines, free, no API key |
 | Backend | FastAPI + Uvicorn |
 | Frontend | React + Vite + Tailwind CSS v4 |
 | CI/CD | GitHub Actions — pytest + flake8 on every push |
