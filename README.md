@@ -72,6 +72,16 @@ Best checkpoint saved automatically via `load_best_model_at_end=True` and logged
 
 ---
 
+## Demo
+
+### Sentiment Analysis
+![Sentiment Analysis](docs/demo_sentiment.png)
+
+### Agent Query
+![Agent Query](docs/demo_agent.png)
+
+---
+
 ## Key Results
 
 | Metric | Value |
