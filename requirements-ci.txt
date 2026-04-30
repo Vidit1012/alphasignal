@@ -1,0 +1,8 @@
+fastapi
+httpx
+pytest
+pytest-mock
+uvicorn
+redis
+python-dotenv
+flake8
