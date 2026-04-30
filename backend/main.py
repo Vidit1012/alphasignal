@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -12,6 +10,8 @@ from .agent import run_agent
 from .cache import get_cached, set_cached
 from .news import fetch_news
 from .sentiment import analyze
+
+load_dotenv()
 
 
 app = FastAPI(title="AlphaSignal API", version="1.0.0")
