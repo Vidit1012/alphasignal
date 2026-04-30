@@ -16,7 +16,7 @@ client = TestClient(app)
 # Shared mocks
 # ---------------------------------------------------------------------------
 
-def _mock_result(label: str = "positive", confidence: float = 0.92) -> MagicMock:
+def _mock_result(label: str = "bullish", confidence: float = 0.92) -> MagicMock:
     r = MagicMock()
     r.label = label
     r.confidence = confidence
@@ -27,9 +27,9 @@ MOCK_HEADLINES = ["NVIDIA beats earnings estimates.", "AI chip demand surges glo
 
 CACHED_RESPONSE = {
     "ticker": "AAPL",
-    "overall_sentiment": "positive",
+    "overall_sentiment": "bullish",
     "confidence": 0.88,
-    "label_distribution": {"positive": 5, "negative": 1, "neutral": 2},
+    "label_distribution": {"bullish": 5, "bearish": 1, "neutral": 2},
     "headlines_analyzed": 8,
     "cached": True,
 }
@@ -54,7 +54,7 @@ class TestSentimentEndpoint:
         with (
             patch("backend.main.get_cached", return_value=None),
             patch("backend.main.fetch_news", return_value=MOCK_HEADLINES),
-            patch("backend.main.analyze", return_value=_mock_result("positive", 0.92)),
+            patch("backend.main.analyze", return_value=_mock_result("bullish", 0.92)),
             patch("backend.main.set_cached"),
         ):
             response = client.post("/sentiment", json={"ticker": "NVDA"})
@@ -62,7 +62,7 @@ class TestSentimentEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["ticker"] == "NVDA"
-        assert data["overall_sentiment"] in ("positive", "negative", "neutral")
+        assert data["overall_sentiment"] in ("bullish", "bearish", "neutral")
         assert 0.0 <= data["confidence"] <= 1.0
         assert isinstance(data["headlines_analyzed"], int)
         assert data["cached"] is False
